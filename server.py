@@ -7,6 +7,7 @@ import time
 messages = queue.Queue()
 clients = []
 names = {}
+kills = []
 
 server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 server.bind(("localhost", 9999))
@@ -20,37 +21,53 @@ def recieve():
             pass
 
 def broadcast():
-    day_start = time.time()
     mafia_chosen = False
-    day_phase_duration = time.time()+60
-    night_phase_duration = time.time()+10
-    phase_start = time.time()
+    day_deadline = time.time() + 30
+    night_deadline = time.time() + 20
+    phase = "DAY"
+    msg_sent = False
+
     while True:
+        now = time.time()
+        #check if minimum players are present
         if not mafia_chosen and len(clients) >= 3:
             mafia = random.sample(list(names.values()),1)[0]
             for key, value in names.items():
                 if value == mafia:
                     server.sendto("You are the mafia!".encode(), key)
+                    mafia_addr = key
             mafia_chosen = True
 
+        #night phase logic
+        if phase == "NIGHT":
+            if not msg_sent:
+                for key, value in names.items():
+                    if value == mafia:
+                        server.sendto("Choose who to kill: ".encode(), key)
+                msg_sent = True
+            if  not messages.empty():
+                msg, address = messages.get()
+                if address == mafia_addr:
+                    target = msg.decode().strip()
+                    target = target.split(":")[1].strip()
+                    if target in names.values():
+                        kills.append(target)
+                        server.sendto(f"Target {target} confirmed".encode(), address)
+                    else:
+                        server.sendto(f"[{target}] is not a user.".encode(), address)
+                        print(f"target is type {type(target)}")
 
-        while day_start < night_phase_duration:
-            elapsed = time.time() - phase_start
-            for key, value in names.items():
-                if value == mafia:
-                    server.sendto("Choose who to kill: ".encode(), key)
-            if elapsed < night_phase_duration:
-                night_phase = False
-                day_start = time.time()
+            #check timer
+            if now >= night_deadline:
+                phase = "DAY"
+                for client in clients:
+                    server.sendto("The sun rises...".encode(), client)
+                day_deadline = time.time() + 30
 
-
-
-
-
-        while  day_start < day_phase_duration:
-            elapsed_time = time.time() -  day_start
-            day_phase = True
-            if elapsed_time < day_phase_duration:
+        #day phase logic
+        if phase == "DAY":  # add check for day phase
+            # broadcasting messages
+            if not messages.empty():
                 message, addr = messages.get()
                 print(message.decode())
                 if addr not in clients:
@@ -58,15 +75,38 @@ def broadcast():
                 for client in clients:
                     try:
                         if message.decode().startswith("TAG:"):
-                            name = message.decode()[message.decode().index(":")+1:]
+                            name = message.decode()[message.decode().index(":") + 1:]
                             names[addr] = name
                             server.sendto(f"{name} joined!".encode(), client)
+                        elif message.decode().startswith("voting"):
+                            #voting logic
+                            
+                            server.sendto(f"{name} has voted!")
                         else:
                             server.sendto(message, client)
                     except:
                         clients.remove(client)
-            day_phase = False
-            night_phase = True
+
+
+
+            #check who got killed
+            if kills:
+                victim = kills[-1]
+                for client in clients:
+                    server.sendto(f"Oh no... Our friend {victim} got killed.".encode(), client)
+                    for key, value in names.items():
+                        if value == victim:
+                            clients.remove(key)
+                    kills.clear()
+
+            #check timer
+            if now >= day_deadline:
+                phase = "NIGHT"
+                for client in clients:
+                    server.sendto("The sun sets... Mafia, wake up!".encode(), client)
+                msg_sent = False
+                night_deadline = time.time() + 10
+
 
 
 t1 = threading.Thread(target=recieve)
