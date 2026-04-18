@@ -15,6 +15,7 @@ def recieve():
             print(message.decode())
         except:
             pass
+            print("client side error")
 
 t = threading.Thread(target=recieve)
 t.start()
