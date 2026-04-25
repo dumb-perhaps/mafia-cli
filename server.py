@@ -23,7 +23,7 @@ def recieve():
 
 def broadcast():
     mafia_chosen = False
-    day_deadline = time.time() + 30
+    day_deadline = time.time() + 50
     night_deadline = time.time() + 20
     phase = "DAY"
     msg_sent = False
